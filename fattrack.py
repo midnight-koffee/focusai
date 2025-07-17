@@ -6,12 +6,18 @@ import mediapipe as mp
 import numpy as np
 from collections import deque
 import time
-import openai  # Use the standard openai package
+import openai
 import traceback
 import os
 
 # Set OpenAI API key from secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
+elif "OPENAI_API_KEY" in os.environ:
+    openai.api_key = os.environ["OPENAI_API_KEY"]
+else:
+    st.error("OpenAI API key not found")
 
 st.set_page_config(page_title="FocusAI - Fatigue Detection", layout="centered")
 st.title("🧠 FocusAI: Real-time Fatigue Detection")
@@ -110,7 +116,7 @@ class FatigueDetector(VideoProcessorBase):
             self.ear_buffer.append(self.avg_ear)
             smoothed_ear = np.mean(self.ear_buffer) if self.ear_buffer else self.avg_ear
             
-            # Blink detection
+            # Blink detection with state machine
             if smoothed_ear < BLINK_THRESHOLD and not self.eye_closed:
                 self.blink_counter += 1
                 self.eye_closed = True
@@ -127,7 +133,7 @@ class FatigueDetector(VideoProcessorBase):
 
             # Update metrics every 3 seconds
             if current_time - self.last_update_time > 3:
-                # Calculate blink rate
+                # Calculate blink rate using last 15 seconds of data
                 recent_blinks = [t for t in self.blink_log if current_time - t <= 15]
                 self.blink_rate = len(recent_blinks) * 4
                 
@@ -237,9 +243,8 @@ def get_fatigue_aware_response(prompt):
         
         # Try different models with fallback
         models_to_try = [
-            "gpt-4-turbo",  # Latest model
-            "gpt-4",        # Standard GPT-4
-            "gpt-3.5-turbo" # Fallback to 3.5 if others fail
+            "gpt-4",
+            "gpt-3.5-turbo"
         ]
         
         response = None
@@ -256,7 +261,7 @@ def get_fatigue_aware_response(prompt):
                     temperature=0.7,
                     max_tokens=256
                 )
-                break  # Exit loop if successful
+                break
             except Exception as e:
                 last_error = e
                 continue
@@ -264,13 +269,10 @@ def get_fatigue_aware_response(prompt):
         if response:
             return response.choices[0].message.content.strip()
         else:
-            st.error(f"All models failed: {str(last_error)}")
-            return "I'm having trouble connecting to the assistant. Please try again later."
+            return f"⚠️ Assistant unavailable: {str(last_error)}"
     
     except Exception as e:
-        st.error(f"Error getting AI response: {str(e)}")
-        st.text(traceback.format_exc())  # Show detailed traceback
-        return "I encountered an unexpected error. Please try again."
+        return f"⚠️ Error: {str(e)}"
 
 # React to user input
 if prompt := st.chat_input("Ask me about fatigue or request a break suggestion"):
