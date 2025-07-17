@@ -1,0 +1,7 @@
+streamlit
+streamlit-webrtc
+opencv-python
+mediapipe
+numpy
+av
+openai==0.28
